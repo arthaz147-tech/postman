@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+=======================================================================
+XML SCHEMA (XSD) — Contrato de Datos del Servicio de Libros SOAP
+=======================================================================
+
+CONCEPTO SOA CLAVE: CONTRATO PRIMERO (Contract-First Development)
+
+En SOA con SOAP, este archivo XSD es la FUENTE DE VERDAD.
+Define exactamente:
+  - Qué datos acepta el servicio (request elements)
+  - Qué datos retorna el servicio (response elements)
+  - Los tipos y restricciones de cada campo
+
+RELACIÓN CON EL SÍLABO:
+  - "Conceptos básicos de XML Schema" (Sesión 5-6)
+  - "Servicios web, WSDL, SOAP" (Sesión 5-6)
+
+FLUJO SOA CONTRACT-FIRST:
+  XSD (este archivo)
+    └─→ WSDL (generado automáticamente por Spring-WS)
+          └─→ Clases Java (generadas por jaxb2-maven-plugin)
+                └─→ Implementación del servicio
+
+Nota: En REST/JSON no existe este archivo XSD.
+El "contrato" REST se describe en OpenAPI/Swagger,
+pero es menos formal y estricto que XSD+WSDL.
+=======================================================================
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://biblioteca.com/libros"
+           xmlns:tns="http://biblioteca.com/libros"
+           elementFormDefault="qualified">
+
+    <!--
+    ───────────────────────────────────────────────────────────────────
+    TIPOS COMPLEJOS (ComplexType) — definen la estructura de los datos
+    ───────────────────────────────────────────────────────────────────
+    Equivalente a una clase Java o a un JSON Schema object.
+    -->
+
+    <!-- Tipo de dato: Libro -->
+    <xs:complexType name="Libro">
+        <xs:sequence>
+            <xs:element name="id"          type="xs:string"/>
+            <xs:element name="titulo"      type="xs:string"/>
+            <xs:element name="autor"       type="xs:string"/>
+            <xs:element name="isbn"        type="xs:string"/>
+            <xs:element name="disponible"  type="xs:boolean"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <!--
+    ───────────────────────────────────────────────────────────────────
+    OPERACIONES DEL SERVICIO
+    Cada operación tiene un elemento Request y un elemento Response.
+    Spring-WS los mapea automáticamente a métodos Java en el @Endpoint.
+    ───────────────────────────────────────────────────────────────────
+    -->
+
+    <!-- ── Operación 1: Obtener un libro por ID ── -->
+    <xs:element name="GetLibroRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="id" type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="GetLibroResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="libro" type="tns:Libro"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ── Operación 2: Listar todos los libros ── -->
+    <xs:element name="ListarLibrosRequest">
+        <!-- Request vacío: no necesita parámetros -->
+        <xs:complexType/>
+    </xs:element>
+
+    <xs:element name="ListarLibrosResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <!-- minOccurs="0": puede haber cero libros (lista vacía) -->
+                <!-- maxOccurs="unbounded": puede haber N libros           -->
+                <xs:element name="libro" type="tns:Libro"
+                            minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ── Operación 3: Agregar un libro ── -->
+    <xs:element name="AgregarLibroRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="titulo"     type="xs:string"/>
+                <xs:element name="autor"      type="xs:string"/>
+                <xs:element name="isbn"       type="xs:string"/>
+                <xs:element name="disponible" type="xs:boolean"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="AgregarLibroResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <!-- El libro creado, con su nuevo ID asignado por el servidor -->
+                <xs:element name="libro"   type="tns:Libro"/>
+                <xs:element name="mensaje" type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ── Operación 4: Cambiar disponibilidad ── -->
+    <xs:element name="CambiarDisponibilidadRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="id"         type="xs:string"/>
+                <xs:element name="disponible" type="xs:boolean"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="CambiarDisponibilidadResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="libro"   type="tns:Libro"/>
+                <xs:element name="mensaje" type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!--
+    ───────────────────────────────────────────────────────────────────
+    FAULT (Error) — manejo de errores en SOAP
+    En REST usamos códigos HTTP (404, 409, 500).
+    En SOAP usamos SOAP Faults con estructura XML definida.
+    ───────────────────────────────────────────────────────────────────
+    -->
+    <xs:element name="ServicioFault">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="codigo"  type="xs:string"/>
+                <xs:element name="mensaje" type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>

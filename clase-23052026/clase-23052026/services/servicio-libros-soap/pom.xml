@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+    </parent>
+
+    <groupId>com.biblioteca</groupId>
+    <artifactId>servicio-libros-soap</artifactId>
+    <version>1.0.0</version>
+    <name>Servicio de Libros SOAP — SOA Clásico</name>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <dependencies>
+        <!--
+        ================================================================
+        spring-boot-starter-web-services = Spring-WS
+        Es el framework de Spring para SOAP. Implementa:
+          - Procesamiento de mensajes SOAP (Envelope, Body, Header)
+          - Despacho de requests al @Endpoint correcto
+          - Generación automática del WSDL desde el XSD
+        ================================================================
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web-services</artifactId>
+        </dependency>
+
+        <!--
+        wsdl4j: librería para generar y manipular documentos WSDL.
+        Spring-WS la usa internamente para publicar el WSDL en /ws/*.wsdl
+        -->
+        <dependency>
+            <groupId>wsdl4j</groupId>
+            <artifactId>wsdl4j</artifactId>
+        </dependency>
+
+        <!--
+        JAXB Runtime: convierte objetos Java ↔ XML (marshalling/unmarshalling).
+        Es el motor que transforma el XML del mensaje SOAP en objetos Java
+        y viceversa. En Java 11+ hay que incluirlo explícitamente.
+        -->
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+            ================================================================
+            jaxb2-maven-plugin — DESARROLLO CONTRACT-FIRST (SOA clásico)
+            ================================================================
+            En SOA con SOAP, el flujo correcto es:
+              1. Definir primero el XML Schema (XSD)  ← contrato de datos
+              2. Generar clases Java AUTOMÁTICAMENTE desde el XSD
+              3. Implementar la lógica de negocio
+
+            Esto garantiza que el CONTRATO (XSD/WSDL) es la fuente de verdad,
+            no el código Java. Cualquier cambio en el contrato se refleja
+            automáticamente en las clases Java al recompilar.
+
+            Las clases se generan en: target/generated-sources/jaxb/
+            ================================================================
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>jaxb2-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>xjc</id>
+                        <goals>
+                            <goal>xjc</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Lee el XSD desde src/main/resources -->
+                    <sources>
+                        <source>${project.basedir}/src/main/resources/libros.xsd</source>
+                    </sources>
+                    <!-- Genera clases en este paquete -->
+                    <packageName>com.biblioteca.soap.generated</packageName>
+                    <outputDirectory>${project.build.directory}/generated-sources/jaxb</outputDirectory>
+                    <clearOutputDir>false</clearOutputDir>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

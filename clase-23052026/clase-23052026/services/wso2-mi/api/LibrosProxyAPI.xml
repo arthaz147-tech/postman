@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    =====================================================================
+    CONCEPTO SOA — MEDIACIÓN (Sesiones 17-18)
+
+    Este archivo define un API en WSO2 Micro Integrator.
+    El cliente llama a WSO2 MI (puerto 8290) en lugar de llamar
+    directamente al servicio-libros (8001). WSO2 MI:
+      1. Registra (traza) cada llamada entrante
+      2. Pasa la solicitud al servicio real
+      3. Registra la respuesta
+      4. Agrega headers de trazabilidad
+
+    La lógica de mediación está en CONFIGURACIÓN XML, no en código Java.
+    =====================================================================
+-->
+<api context="/mi/libros" name="LibrosProxyAPI" xmlns="http://ws.apache.org/ns/synapse">
+
+    <!-- Endpoint para listar todos los libros: GET /mi/libros -->
+    <resource methods="GET">
+        <inSequence>
+
+            <!-- PASO 1: Log de entrada — trazabilidad centralizada -->
+            <log level="custom">
+                <property name="[WSO2-MI]" value="Solicitud recibida → servicio-libros"/>
+                <property name="Endpoint" value="GET /mi/libros"/>
+            </log>
+
+            <!-- PASO 2: Mediación — llamada al servicio real (backend) -->
+            <call>
+                <endpoint>
+                    <http method="get"
+                          uri-template="http://soa-libros:8001/libros"/>
+                </endpoint>
+            </call>
+
+            <!-- PASO 3: Log de respuesta -->
+            <log level="custom">
+                <property name="[WSO2-MI]" value="Respuesta obtenida de servicio-libros"/>
+            </log>
+
+            <!-- PASO 4: Transformación — agregar headers de trazabilidad -->
+            <header name="X-Orquestado-Por"  value="WSO2-Micro-Integrator" scope="transport"/>
+            <header name="X-Sesion-SOA"       value="Sesion-17-18"          scope="transport"/>
+            <header name="X-Backend-Service"  value="soa-libros:8001"       scope="transport"/>
+
+            <respond/>
+        </inSequence>
+
+        <!-- Manejo de fallos: si el backend está caído, respuesta controlada -->
+        <faultSequence>
+            <log level="custom">
+                <property name="[WSO2-MI][ERROR]" value="No se pudo contactar soa-libros"/>
+            </log>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "error": "Servicio de libros no disponible",
+                        "intermediario": "WSO2-Micro-Integrator",
+                        "sugerencia": "Verificar que soa-libros:8001 esté activo"
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="503" scope="axis2"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+
+    <!-- Endpoint para obtener un libro por ID: GET /mi/libros/{id} -->
+    <resource methods="GET" uri-template="/{id}">
+        <inSequence>
+            <log level="custom">
+                <property name="[WSO2-MI]" value="Solicitud recibida → GET libro por ID"/>
+            </log>
+            <call>
+                <endpoint>
+                    <http method="get"
+                          uri-template="http://soa-libros:8001/libros/{uri.var.id}"/>
+                </endpoint>
+            </call>
+            <header name="X-Orquestado-Por" value="WSO2-Micro-Integrator" scope="transport"/>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <payloadFactory media-type="json">
+                <format>{"error": "Libro no encontrado o servicio no disponible"}</format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="503" scope="axis2"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+
+</api>

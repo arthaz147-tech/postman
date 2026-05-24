@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    =====================================================================
+    CONCEPTO SOA — ORQUESTACIÓN (Sesiones 17-18)
+
+    DIFERENCIA CLAVE:
+    ┌─────────────────────────────────────────────────────────────┐
+    │  COMPOSICIÓN (ses. 15-16):                                  │
+    │  El flujo está en CÓDIGO JAVA (PrestamoService.java)        │
+    │  Si quiero cambiar el orden, recompilo y redespliego.       │
+    │                                                             │
+    │  ORQUESTACIÓN (ses. 17-18):                                 │
+    │  El flujo está en CONFIGURACIÓN XML (este archivo)          │
+    │  Si quiero cambiar el orden, solo cambio el XML.            │
+    │  Los servicios no saben que están siendo orquestados.       │
+    └─────────────────────────────────────────────────────────────┘
+
+    Este API orquesta:
+    1. GET /libros desde soa-libros:8001
+    2. Transforma la respuesta: agrega metadatos
+    3. Retorna catálogo enriquecido al cliente
+
+    El cliente llama: GET http://localhost:8290/mi/catalogo-enriquecido
+    =====================================================================
+-->
+<api context="/mi/catalogo-enriquecido" name="CatalogoEnriquecidoAPI"
+     xmlns="http://ws.apache.org/ns/synapse">
+
+    <resource methods="GET">
+        <inSequence>
+
+            <!-- PASO 1: Log — inicio de la orquestación -->
+            <log level="custom">
+                <property name="[ORQUESTACION]" value="INICIO — WSO2 MI inicia flujo de enriquecimiento"/>
+            </log>
+
+            <!-- PASO 2: Llamar al servicio de libros (primer servicio orquestado) -->
+            <call>
+                <endpoint>
+                    <http method="get" uri-template="http://soa-libros:8001/libros"/>
+                </endpoint>
+            </call>
+
+            <!-- PASO 3: Guardar la respuesta del backend como propiedad de contexto -->
+            <property name="datos_libros"
+                      expression="json-eval($)"
+                      scope="default"
+                      type="STRING"/>
+
+            <!-- PASO 4: TRANSFORMACIÓN — envolver los datos con metadatos de la orquestación -->
+            <!--
+                payloadFactory reemplaza el cuerpo de la respuesta.
+                $1 = el valor de la propiedad "datos_libros" (el array de libros).
+
+                CONCEPTO SOA: Transformación de mensajes — el cliente recibe
+                un formato diferente al que devuelve el backend, sin que ninguno
+                de los dos sepa del otro.
+            -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "fuente": "WSO2-Micro-Integrator",
+                        "operacion": "catalogo-enriquecido",
+                        "descripcion": "Datos del catálogo enriquecidos por el ESB",
+                        "version_api": "v1",
+                        "libros": $1
+                    }
+                </format>
+                <args>
+                    <arg evaluator="json" expression="$ctx:datos_libros"/>
+                </args>
+            </payloadFactory>
+
+            <!-- PASO 5: Agregar header de trazabilidad -->
+            <header name="X-Orquestado-Por"  value="WSO2-Micro-Integrator" scope="transport"/>
+            <header name="Content-Type"       value="application/json"      scope="transport"/>
+
+            <!-- PASO 6: Log — fin de la orquestación -->
+            <log level="custom">
+                <property name="[ORQUESTACION]" value="FIN — respuesta enriquecida lista para el cliente"/>
+            </log>
+
+            <respond/>
+        </inSequence>
+
+        <faultSequence>
+            <log level="custom">
+                <property name="[ORQUESTACION][ERROR]" value="Fallo durante la orquestación"/>
+            </log>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "error": "Fallo en la orquestación del catálogo",
+                        "orquestador": "WSO2-Micro-Integrator",
+                        "causa": "servicio-libros no disponible"
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="503" scope="axis2"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+
+</api>

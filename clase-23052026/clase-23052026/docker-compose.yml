@@ -1,0 +1,212 @@
+# =============================================================
+# Docker Compose — Sistema de Biblioteca SOA
+# =============================================================
+# CONCEPTO SOA: cada contenedor = un servicio desplegado
+# independientemente, comunicándose por red.
+#
+# Uso:
+#   docker compose up --build       # levantar todo
+#   docker compose down             # apagar todo
+#   docker compose logs -f          # ver logs en tiempo real
+# =============================================================
+
+services:
+
+  servicio-libros:
+    build: ./services/servicio-libros
+    container_name: soa-libros
+    ports:
+      - "8001:8001"      # localhost:8001 → contenedor:8001
+    environment:
+      # Sesiones 17-18: conectar al PostgreSQL compartido del ecosistema
+      - POSTGRES_HOST=soa-postgres
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/libros/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s   # JPA + PostgreSQL tarda más en iniciar que H2
+
+  servicio-usuarios:
+    build: ./services/servicio-usuarios
+    container_name: soa-usuarios
+    ports:
+      - "8002:8002"
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/usuarios/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  servicio-prestamos:
+    build: ./services/servicio-prestamos
+    container_name: soa-prestamos
+    ports:
+      - "8003:8003"
+    environment:
+      # LOOSE COUPLING: las URLs son configurables, no hardcodeadas en el código.
+      # En Docker Compose, usamos el nombre del contenedor como hostname (DNS interno).
+      # En application.properties, el default es localhost (para desarrollo local).
+      - LIBROS_SERVICE_URL=http://soa-libros:8001
+      - USUARIOS_SERVICE_URL=http://soa-usuarios:8002
+      - SPRING_RABBITMQ_HOST=soa-esb-rabbitmq
+      # Spring Boot lee variables de entorno con este formato:
+      # LIBROS_SERVICE_URL → libros.service.url
+    depends_on:
+      servicio-libros:
+        condition: service_healthy
+      servicio-usuarios:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - soa-network
+
+  # ── Laboratorio XML — XPath, XSLT, XSD (Sesiones 5-6) ─────────
+  servicio-xml:
+    build: ./services/servicio-xml
+    container_name: soa-xml
+    ports:
+      - "8005:8005"
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/xml/catalogo || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Servicio SOAP (SOA Clásico) ────────────────────────────────
+  # Este servicio demuestra el enfoque ORIGINAL de SOA:
+  # SOAP + WSDL + XML Schema en lugar de REST + JSON + OpenAPI
+  servicio-libros-soap:
+    build: ./services/servicio-libros-soap
+    container_name: soa-libros-soap
+    ports:
+      - "8004:8004"
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/ws/libros.wsdl || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s   # Maven compila + genera clases desde XSD
+
+  # ── Service Registry (Inventario de Servicios / UDDI Moderno — Sesiones 10-12) ─
+  servicio-registro:
+    build: ./services/servicio-registro
+    container_name: soa-registro
+    ports:
+      - "8007:8007"
+    environment:
+      - LIBROS_SERVICE_URL=http://soa-libros:8001
+      - USUARIOS_SERVICE_URL=http://soa-usuarios:8002
+      - PRESTAMOS_SERVICE_URL=http://soa-prestamos:8003
+      - SOAP_SERVICE_URL=http://soa-libros-soap:8004/ws
+      - XML_SERVICE_URL=http://soa-xml:8005
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8007/registro/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── ESB: RabbitMQ (Enterprise Service Bus — Sesiones 10-12) ──────────────────
+  # Broker de mensajes que simula un ESB.
+  # UI de administración: http://localhost:15672  (usuario: guest / contraseña: guest)
+  # Demuestra comunicación ASÍNCRONA vs la síncrona de RestTemplate.
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: soa-esb-rabbitmq
+    ports:
+      - "5672:5672"    # Puerto AMQP (protocolo de mensajería)
+      - "15672:15672"  # Management UI — para ver colas, mensajes, exchanges
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=soa-secret-cookie
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:13
+    container_name: soa-postgres
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=biblioteca
+    ports:
+      - "5432:5432"
+    volumes:
+      # PERSISTENCIA: los datos de PostgreSQL sobreviven a 'docker compose down'
+      # Sin este volumen, cada 'docker compose up' empezaría con base vacía.
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - soa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d biblioteca || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── ESB Real: WSO2 Micro Integrator (Sesiones 17-18) ─────────────────────
+  # El verdadero ESB: mediación, transformación y orquestación de servicios.
+  # Imagen oficial: ~500MB — hacer pull ANTES de clase con:
+  #   docker pull wso2/wso2mi:4.3.0
+  #
+  # Puerto 8290: APIs desplegadas (equivale al "gateway" del ESB)
+  # Puerto 9164: Management API (estado, métricas)
+  #
+  # Las configuraciones XML en ./services/wso2-mi/api/ se montan en el
+  # directorio de despliegue de synapse — WSO2 MI las carga automáticamente.
+  wso2-mi:
+    image: wso2/wso2mi:4.3.0
+    container_name: soa-wso2-mi
+    ports:
+      - "8290:8290"   # APIs desplegadas: http://localhost:8290/mi/...
+      - "9164:9164"   # Management API
+    volumes:
+      # Montar las configuraciones XML de las APIs de orquestación
+      - ./services/wso2-mi/api:/home/wso2carbon/wso2mi-4.3.0/repository/deployment/server/synapse-configs/default/api
+    networks:
+      - soa-network
+    depends_on:
+      servicio-libros:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk https://localhost:9164/management/health | grep -q 'running' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s   # WSO2 MI tarda ~45s en arrancar
+
+networks:
+  soa-network:
+    driver: bridge
+    # Red interna donde los servicios se comunican entre sí
+    # El mundo exterior solo accede por los puertos expuestos
+
+volumes:
+  # Volumen nombrado para persistencia de PostgreSQL.
+  # 'docker compose down' NO elimina este volumen.
+  # Para borrar datos: docker compose down -v  (o docker volume rm soa-postgres-data)
+  postgres-data:

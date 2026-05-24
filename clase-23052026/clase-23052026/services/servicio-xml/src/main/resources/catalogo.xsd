@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  XSD del Catálogo de Libros — Laboratorio de clase
+  Usado por el endpoint POST /xml/validar para demostrar validación XSD.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://biblioteca.com/libros"
+           xmlns:tns="http://biblioteca.com/libros"
+           elementFormDefault="qualified">
+
+  <!-- TIPO SIMPLE con restricción de patrón (regex) -->
+  <xs:simpleType name="ISBNType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="978-\d{10}"/>
+      <xs:minLength value="14"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- TIPO SIMPLE con enumeración (valores permitidos) -->
+  <xs:simpleType name="CategoriaType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="tecnologia"/>
+      <xs:enumeration value="soa"/>
+      <xs:enumeration value="arquitectura"/>
+      <xs:enumeration value="gestion"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- TIPO SIMPLE con restricción numérica -->
+  <xs:simpleType name="PrecioType">
+    <xs:restriction base="xs:decimal">
+      <xs:minExclusive value="0"/>
+      <xs:fractionDigits value="2"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- TIPO COMPLEJO: estructura de un libro -->
+  <xs:complexType name="LibroType">
+    <xs:sequence>
+      <xs:element name="titulo"      type="xs:string"/>
+      <xs:element name="autor"       type="xs:string"/>
+      <xs:element name="isbn"        type="tns:ISBNType"/>
+      <xs:element name="precio"      type="tns:PrecioType"/>
+      <xs:element name="disponible"  type="xs:boolean"/>
+      <xs:element name="descripcion" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id"        type="xs:string"         use="required"/>
+    <xs:attribute name="categoria" type="tns:CategoriaType" use="optional"/>
+  </xs:complexType>
+
+  <!-- ELEMENTO RAÍZ -->
+  <xs:element name="catalogo">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="libro" type="tns:LibroType"
+                    minOccurs="1" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

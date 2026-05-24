@@ -1,0 +1,796 @@
+{
+  "info": {
+    "name": "SOA Biblioteca - Sesiones 1-18",
+    "description": "Colección completa para explorar el ecosistema SOA del sistema de biblioteca.\n\nOrden recomendado de pruebas:\n1. Health Checks (verificar que todo corre)\n2. Libros (Entity Service)\n3. Usuarios (Entity Service)\n4. Préstamos (Task Service - composición)\n5. OpenAPI / Contratos\n6. XML Lab (XPath, XSLT, XSD)\n7. SOAP (SOA Clásico)\n8. Seguridad (API Key)\n9. Service Registry & ESB (Inventario, Salud, RabbitMQ)\n10. PostgreSQL + WSO2 MI (Persistencia + Orquestación)\n\nConceptos demostrados: Stateless, Encapsulación, Interoperabilidad, Tipos de servicio, Sincronismo, UDDI, ESB, Persistencia, Orquestación.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "libros_url",      "value": "http://localhost:8001" },
+    { "key": "usuarios_url",    "value": "http://localhost:8002" },
+    { "key": "prestamos_url",   "value": "http://localhost:8003" },
+    { "key": "soap_url",        "value": "http://localhost:8004/ws" },
+    { "key": "xml_url",         "value": "http://localhost:8005" },
+    { "key": "registro_url",    "value": "http://localhost:8007" },
+    { "key": "wso2_url",        "value": "http://localhost:8290" }
+  ],
+  "item": [
+    {
+      "name": "0. Health Checks",
+      "item": [
+        {
+          "name": "Libros - Health",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/health",
+            "description": "Verifica que el Servicio de Libros está activo."
+          }
+        },
+        {
+          "name": "Usuarios - Health",
+          "request": {
+            "method": "GET",
+            "url": "{{usuarios_url}}/health",
+            "description": "Verifica que el Servicio de Usuarios está activo."
+          }
+        },
+        {
+          "name": "Préstamos - Health (con dependencias)",
+          "request": {
+            "method": "GET",
+            "url": "{{prestamos_url}}/health",
+            "description": "Verifica el servicio Y sus dependencias. Buena práctica SOA."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Servicio de Libros (Entity Service)",
+      "item": [
+        {
+          "name": "GET - Listar todos los libros",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros",
+            "description": "STATELESS: cada request es independiente. Retorna el catálogo completo."
+          }
+        },
+        {
+          "name": "GET - Obtener libro por ID",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros/lib-001",
+            "description": "REMOTO: el cliente conoce solo la URL y el ID. No sabe cómo está implementado."
+          }
+        },
+        {
+          "name": "POST - Crear nuevo libro",
+          "request": {
+            "method": "POST",
+            "url": "{{libros_url}}/libros",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"SOA Principles of Service Design\",\n  \"autor\": \"Thomas Erl\",\n  \"isbn\": \"978-0132344821\",\n  \"disponible\": true\n}"
+            },
+            "description": "ENCAPSULACIÓN: el servidor genera el ID internamente. El cliente solo provee los datos de negocio."
+          }
+        },
+        {
+          "name": "PATCH - Cambiar disponibilidad",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{libros_url}}/libros/lib-001/disponibilidad?disponible=false",
+              "query": [{ "key": "disponible", "value": "false" }]
+            },
+            "description": "Marca un libro como no disponible. Este endpoint es llamado internamente por el Servicio de Préstamos."
+          }
+        },
+        {
+          "name": "DELETE - Eliminar libro",
+          "request": {
+            "method": "DELETE",
+            "url": "{{libros_url}}/libros/lib-003",
+            "description": "Elimina un libro del catálogo."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Servicio de Usuarios (Entity Service)",
+      "item": [
+        {
+          "name": "GET - Listar todos los usuarios",
+          "request": {
+            "method": "GET",
+            "url": "{{usuarios_url}}/usuarios",
+            "description": "Retorna todos los usuarios registrados."
+          }
+        },
+        {
+          "name": "GET - Obtener usuario por ID",
+          "request": {
+            "method": "GET",
+            "url": "{{usuarios_url}}/usuarios/usr-001",
+            "description": "INTEROPERABILIDAD: este mismo endpoint lo consume el Servicio de Préstamos via HTTP."
+          }
+        },
+        {
+          "name": "POST - Registrar nuevo usuario",
+          "request": {
+            "method": "POST",
+            "url": "{{usuarios_url}}/usuarios",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Carlos Mendoza\",\n  \"email\": \"carlos@biblioteca.pe\",\n  \"dni\": \"99887766\"\n}"
+            },
+            "description": "BUENA PRÁCTICA: validación de DNI único para evitar duplicados."
+          }
+        },
+        {
+          "name": "POST - Registrar usuario con DNI duplicado (error esperado)",
+          "request": {
+            "method": "POST",
+            "url": "{{usuarios_url}}/usuarios",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Otro Usuario\",\n  \"email\": \"otro@biblioteca.pe\",\n  \"dni\": \"12345678\"\n}"
+            },
+            "description": "Debe retornar 409 Conflict. Demuestra validación de negocio."
+          }
+        },
+        {
+          "name": "PATCH - Desactivar usuario",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{usuarios_url}}/usuarios/usr-002/estado?activo=false",
+              "query": [{ "key": "activo", "value": "false" }]
+            },
+            "description": "BUENA PRÁCTICA: soft delete. No elimina, desactiva para mantener trazabilidad."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Servicio de Préstamos (Task Service)",
+      "item": [
+        {
+          "name": "POST - Crear préstamo (flujo completo)",
+          "request": {
+            "method": "POST",
+            "url": "{{prestamos_url}}/prestamos",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario_id\": \"usr-001\",\n  \"libro_id\": \"lib-001\"\n}"
+            },
+            "description": "COMPOSICIÓN DE SERVICIOS: este endpoint internamente llama al Servicio de Usuarios y al Servicio de Libros. SINCRONISMO: bloquea hasta recibir respuesta de ambos."
+          }
+        },
+        {
+          "name": "POST - Intentar prestar libro ya prestado (error esperado)",
+          "request": {
+            "method": "POST",
+            "url": "{{prestamos_url}}/prestamos",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario_id\": \"usr-002\",\n  \"libro_id\": \"lib-001\"\n}"
+            },
+            "description": "Debe retornar 409 Conflict porque lib-001 ya fue prestado arriba."
+          }
+        },
+        {
+          "name": "POST - Préstamo con usuario desactivado (error esperado)",
+          "request": {
+            "method": "POST",
+            "url": "{{prestamos_url}}/prestamos",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario_id\": \"usr-002\",\n  \"libro_id\": \"lib-002\"\n}"
+            },
+            "description": "usr-002 fue desactivado antes. El Task Service valida el estado via llamada al Entity Service."
+          }
+        },
+        {
+          "name": "GET - Listar todos los préstamos",
+          "request": {
+            "method": "GET",
+            "url": "{{prestamos_url}}/prestamos",
+            "description": "Ve el estado de todos los préstamos."
+          }
+        },
+        {
+          "name": "POST - Devolver libro (reemplaza prest-XXXXXX con ID real)",
+          "request": {
+            "method": "POST",
+            "url": "{{prestamos_url}}/prestamos/prest-XXXXXX/devolver",
+            "description": "Reemplaza prest-XXXXXX con el ID del préstamo creado. Llama al Servicio de Libros para marcar disponible."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Seguridad — API Key (Sesión 8)",
+      "description": "Lab de seguridad. PRIMERO activa la seguridad en servicio-libros:\n  application.properties → security.api-key.enabled=true\n  docker compose up --build servicio-libros",
+      "item": [
+        {
+          "name": "GET libros SIN API Key → 401 (esperado)",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros",
+            "description": "Con security.api-key.enabled=true, este request debe retornar 401 Unauthorized.\nDemuestra que el servicio ahora requiere identificación del consumidor."
+          }
+        },
+        {
+          "name": "GET libros CON API Key correcta → 200",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros",
+            "header": [
+              { "key": "X-API-Key", "value": "biblioteca-soa-2026" }
+            ],
+            "description": "Con la API Key correcta en el header, el servicio responde normalmente.\nEl consumidor se ha identificado — el servicio confía en él."
+          }
+        },
+        {
+          "name": "GET libros CON API Key incorrecta → 401",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros",
+            "header": [
+              { "key": "X-API-Key", "value": "clave-incorrecta-123" }
+            ],
+            "description": "Una API Key inválida también retorna 401. El servicio NO revela si la key existe o no — solo dice 'no autorizado'."
+          }
+        },
+        {
+          "name": "GET health — SIEMPRE público (sin key)",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/libros/health",
+            "description": "El health check es una ruta pública — necesaria para Docker healthcheck y monitoreo. No requiere API Key aunque la seguridad esté activada."
+          }
+        },
+        {
+          "name": "POST préstamo (falla en cascada) → 500",
+          "request": {
+            "method": "POST",
+            "url": "{{prestamos_url}}/prestamos",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario_id\": \"usr-001\",\n  \"libro_id\": \"lib-001\"\n}"
+            },
+            "description": "Con security.api-key.enabled=true en libros:\nservicio-prestamos llama a servicio-libros SIN API Key → recibe 401 → falla en cascada.\nEsto demuestra el problema de inter-service security en SOA."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. XML Lab — XPath, XSLT, XSD (Sesiones 5-6)",
+      "description": "Laboratorio práctico de tecnologías XML. Puerto 8005.",
+      "item": [
+        {
+          "name": "GET — Ver catálogo XML de ejemplo",
+          "request": {
+            "method": "GET",
+            "url": "{{xml_url}}/xml/catalogo",
+            "description": "Retorna el documento XML de trabajo. Copia este XML para usarlo en los otros endpoints."
+          }
+        },
+        {
+          "name": "POST — Validar XML correcto (XSD)",
+          "request": {
+            "method": "POST",
+            "url": "{{xml_url}}/xml/validar",
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\" categoria=\"arquitectura\">\n        <bib:titulo>Clean Architecture</bib:titulo>\n        <bib:autor>Robert C. Martin</bib:autor>\n        <bib:isbn>978-0134494166</bib:isbn>\n        <bib:precio>45.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n</bib:catalogo>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "XML válido. Respuesta: {valido: true}"
+          }
+        },
+        {
+          "name": "POST — Validar XML con ERRORES (XSD)",
+          "request": {
+            "method": "POST",
+            "url": "{{xml_url}}/xml/validar",
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro categoria=\"novela\">\n        <bib:titulo>Un libro</bib:titulo>\n        <bib:autor>Autor</bib:autor>\n        <bib:isbn>123</bib:isbn>\n        <bib:precio>-5.00</bib:precio>\n        <bib:disponible>si</bib:disponible>\n    </bib:libro>\n</bib:catalogo>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "Errores: falta atributo id (required), ISBN inválido (patrón), precio negativo, categoría 'novela' no permitida, disponible no es booleano."
+          }
+        },
+        {
+          "name": "POST — XPath: todos los títulos",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{xml_url}}/xml/xpath?expresion=/bib:catalogo/bib:libro/bib:titulo",
+              "query": [{ "key": "expresion", "value": "/bib:catalogo/bib:libro/bib:titulo" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": { "mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\" categoria=\"arquitectura\">\n        <bib:titulo>Clean Architecture</bib:titulo>\n        <bib:autor>Robert C. Martin</bib:autor>\n        <bib:isbn>978-0134494166</bib:isbn>\n        <bib:precio>45.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n    <bib:libro id=\"lib-002\" categoria=\"soa\">\n        <bib:titulo>Designing SOA</bib:titulo>\n        <bib:autor>Thomas Erl</bib:autor>\n        <bib:isbn>978-0137135790</bib:isbn>\n        <bib:precio>55.00</bib:precio>\n        <bib:disponible>false</bib:disponible>\n    </bib:libro>\n</bib:catalogo>", "options": { "raw": { "language": "xml" } } },
+            "description": "XPath básico: selecciona todos los elementos <titulo>. La expresión va en ?expresion= como query param."
+          }
+        },
+        {
+          "name": "POST — XPath: libros disponibles",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{xml_url}}/xml/xpath?expresion=//bib:libro[bib:disponible='true']/bib:titulo",
+              "query": [{ "key": "expresion", "value": "//bib:libro[bib:disponible='true']/bib:titulo" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": { "mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\" categoria=\"arquitectura\">\n        <bib:titulo>Clean Architecture</bib:titulo>\n        <bib:autor>Robert C. Martin</bib:autor>\n        <bib:isbn>978-0134494166</bib:isbn>\n        <bib:precio>45.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n    <bib:libro id=\"lib-002\" categoria=\"soa\">\n        <bib:titulo>Designing SOA</bib:titulo>\n        <bib:autor>Thomas Erl</bib:autor>\n        <bib:isbn>978-0137135790</bib:isbn>\n        <bib:precio>55.00</bib:precio>\n        <bib:disponible>false</bib:disponible>\n    </bib:libro>\n</bib:catalogo>", "options": { "raw": { "language": "xml" } } },
+            "description": "XPath con predicado [ ]: filtra libros disponibles. Funciona porque Tomcat está configurado con relaxed-query-chars=[,]"
+          }
+        },
+        {
+          "name": "POST — XPath: contar libros (función count)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{xml_url}}/xml/xpath?expresion=count(//bib:libro)",
+              "query": [{ "key": "expresion", "value": "count(//bib:libro)" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": { "mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\"><bib:titulo>Libro A</bib:titulo><bib:autor>Autor</bib:autor><bib:isbn>978-0134494166</bib:isbn><bib:precio>10.00</bib:precio><bib:disponible>true</bib:disponible></bib:libro>\n    <bib:libro id=\"lib-002\"><bib:titulo>Libro B</bib:titulo><bib:autor>Autor</bib:autor><bib:isbn>978-0137135790</bib:isbn><bib:precio>20.00</bib:precio><bib:disponible>false</bib:disponible></bib:libro>\n</bib:catalogo>", "options": { "raw": { "language": "xml" } } },
+            "description": "Función XPath escalar: count() retorna un número. El servicio detecta automáticamente si el resultado es nodeset o escalar."
+          }
+        },
+        {
+          "name": "POST — XSLT: XML → HTML (ver en navegador)",
+          "request": {
+            "method": "POST",
+            "url": "{{xml_url}}/xml/transformar/html",
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": { "mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\" categoria=\"arquitectura\">\n        <bib:titulo>Clean Architecture</bib:titulo>\n        <bib:autor>Robert C. Martin</bib:autor>\n        <bib:isbn>978-0134494166</bib:isbn>\n        <bib:precio>45.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n    <bib:libro id=\"lib-002\" categoria=\"soa\">\n        <bib:titulo>Designing SOA</bib:titulo>\n        <bib:autor>Thomas Erl</bib:autor>\n        <bib:isbn>978-0137135790</bib:isbn>\n        <bib:precio>55.00</bib:precio>\n        <bib:disponible>false</bib:disponible>\n    </bib:libro>\n    <bib:libro id=\"lib-003\" categoria=\"tecnologia\">\n        <bib:titulo>Building Microservices</bib:titulo>\n        <bib:autor>Sam Newman</bib:autor>\n        <bib:isbn>978-1492034025</bib:isbn>\n        <bib:precio>49.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n</bib:catalogo>", "options": { "raw": { "language": "xml" } } },
+            "description": "Copia el HTML de la respuesta, pégalo en un archivo .html y ábrelo en el navegador. ¡Los mismos datos XML se convierten en una tabla visual!"
+          }
+        },
+        {
+          "name": "POST — XSLT: XML → XML inventario (reestructurar)",
+          "request": {
+            "method": "POST",
+            "url": "{{xml_url}}/xml/transformar/inventario",
+            "header": [{ "key": "Content-Type", "value": "application/xml" }],
+            "body": { "mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bib:catalogo xmlns:bib=\"http://biblioteca.com/libros\" version=\"1.0\">\n    <bib:libro id=\"lib-001\" categoria=\"arquitectura\">\n        <bib:titulo>Clean Architecture</bib:titulo>\n        <bib:autor>Robert C. Martin</bib:autor>\n        <bib:isbn>978-0134494166</bib:isbn>\n        <bib:precio>45.99</bib:precio>\n        <bib:disponible>true</bib:disponible>\n    </bib:libro>\n    <bib:libro id=\"lib-002\" categoria=\"soa\">\n        <bib:titulo>Designing SOA</bib:titulo>\n        <bib:autor>Thomas Erl</bib:autor>\n        <bib:isbn>978-0137135790</bib:isbn>\n        <bib:precio>55.00</bib:precio>\n        <bib:disponible>false</bib:disponible>\n    </bib:libro>\n</bib:catalogo>", "options": { "raw": { "language": "xml" } } },
+            "description": "Transforma el XML del catálogo a un formato 'inventario' con diferente estructura. Caso de uso SOA real: adaptar mensajes entre sistemas en el ESB."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. SOAP — SOA Clásico (XML + WSDL)",
+      "description": "Servicio SOAP en puerto 8004. Todos los requests van a la MISMA URL (/ws). La operación se identifica por el elemento XML dentro del SOAP Body, NO por la URL ni el verbo HTTP.",
+      "item": [
+        {
+          "name": "VER WSDL (contrato del servicio)",
+          "request": {
+            "method": "GET",
+            "url": "{{soap_url}}/libros.wsdl",
+            "description": "El WSDL describe COMPLETAMENTE el servicio: operaciones, tipos de datos, URL, protocolo. Es el equivalente SOAP del OpenAPI/Swagger JSON. Ábrelo en el navegador para verlo formateado."
+          }
+        },
+        {
+          "name": "SOAP — ListarLibros",
+          "request": {
+            "method": "POST",
+            "url": "{{soap_url}}",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction",   "value": "" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope\n  xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n  xmlns:lib=\"http://biblioteca.com/libros\">\n\n  <soapenv:Header/>\n\n  <soapenv:Body>\n    <!--\n      CONCEPTO SOA:\n      En SOAP todos los requests van a la MISMA URL (/ws).\n      La operación se identifica por el elemento XML: <ListarLibrosRequest>\n      Spring-WS lo mapea al método correspondiente en el @Endpoint.\n\n      Compara con REST: GET http://localhost:8001/libros\n      En REST la operación = URL + verbo HTTP\n      En SOAP la operación = nombre del elemento XML\n    -->\n    <lib:ListarLibrosRequest/>\n  </soapenv:Body>\n\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "Request SOAP para listar libros. Observa la estructura SOAP Envelope > Body > [elemento de operación]. La respuesta también viene en XML."
+          }
+        },
+        {
+          "name": "SOAP — GetLibro por ID",
+          "request": {
+            "method": "POST",
+            "url": "{{soap_url}}",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction",   "value": "" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope\n  xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n  xmlns:lib=\"http://biblioteca.com/libros\">\n\n  <soapenv:Header/>\n\n  <soapenv:Body>\n    <lib:GetLibroRequest>\n      <lib:id>lib-001</lib:id>\n    </lib:GetLibroRequest>\n  </soapenv:Body>\n\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "Obtiene un libro específico. Compara la verbosidad del XML SOAP vs el JSON REST: GET /libros/lib-001"
+          }
+        },
+        {
+          "name": "SOAP — AgregarLibro",
+          "request": {
+            "method": "POST",
+            "url": "{{soap_url}}",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction",   "value": "" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope\n  xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n  xmlns:lib=\"http://biblioteca.com/libros\">\n\n  <soapenv:Header/>\n\n  <soapenv:Body>\n    <!--\n      En SOAP no existe el concepto de POST/GET/PATCH.\n      Crear y consultar usan el mismo método HTTP (POST).\n      La OPERACIÓN la define el elemento XML: <AgregarLibroRequest>\n\n      Compara con REST: POST /libros con body JSON\n    -->\n    <lib:AgregarLibroRequest>\n      <lib:titulo>Enterprise Integration Patterns</lib:titulo>\n      <lib:autor>Gregor Hohpe</lib:autor>\n      <lib:isbn>978-0321200686</lib:isbn>\n      <lib:disponible>true</lib:disponible>\n    </lib:AgregarLibroRequest>\n  </soapenv:Body>\n\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            }
+          }
+        },
+        {
+          "name": "SOAP — CambiarDisponibilidad",
+          "request": {
+            "method": "POST",
+            "url": "{{soap_url}}",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction",   "value": "" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope\n  xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n  xmlns:lib=\"http://biblioteca.com/libros\">\n\n  <soapenv:Header/>\n\n  <soapenv:Body>\n    <lib:CambiarDisponibilidadRequest>\n      <lib:id>lib-001</lib:id>\n      <lib:disponible>false</lib:disponible>\n    </lib:CambiarDisponibilidadRequest>\n  </soapenv:Body>\n\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "Equivale a PATCH /libros/lib-001/disponibilidad?disponible=false en REST."
+          }
+        },
+        {
+          "name": "SOAP — GetLibro INEXISTENTE (SOAP Fault)",
+          "request": {
+            "method": "POST",
+            "url": "{{soap_url}}",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "SOAPAction",   "value": "" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope\n  xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n  xmlns:lib=\"http://biblioteca.com/libros\">\n\n  <soapenv:Header/>\n\n  <soapenv:Body>\n    <lib:GetLibroRequest>\n      <lib:id>lib-999</lib:id>\n    </lib:GetLibroRequest>\n  </soapenv:Body>\n\n</soapenv:Envelope>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "description": "En REST los errores son códigos HTTP (404). En SOAP los errores son SOAP Faults: <soapenv:Fault> con código y mensaje dentro del XML. Observa la respuesta."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Explorar Contratos (OpenAPI)",
+      "item": [
+        {
+          "name": "Docs Libros (Swagger UI)",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/docs",
+            "description": "Abre en el navegador para ver el contrato completo del servicio."
+          }
+        },
+        {
+          "name": "Docs Usuarios (Swagger UI)",
+          "request": {
+            "method": "GET",
+            "url": "{{usuarios_url}}/docs"
+          }
+        },
+        {
+          "name": "Docs Préstamos (Swagger UI)",
+          "request": {
+            "method": "GET",
+            "url": "{{prestamos_url}}/docs"
+          }
+        },
+        {
+          "name": "OpenAPI JSON - Libros (contrato máquina)",
+          "request": {
+            "method": "GET",
+            "url": "{{libros_url}}/openapi.json",
+            "description": "El contrato del servicio en formato JSON. Equivalente moderno del WSDL en SOA/SOAP."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Service Registry & ESB (Sesiones 10-12)",
+      "description": "Laboratorio SOA — Inventario de Servicios y Enterprise Service Bus.\n\nPRIMERO: docker compose up --build\n\nConceptos demostrados:\n  - Service Inventory: catálogo centralizado de todos los servicios (equivalente moderno de UDDI)\n  - UDDI White Pages → nombre y descripción de cada servicio\n  - UDDI Yellow Pages → tipo de servicio (ENTITY, TASK, SOAP, UTILITY)\n  - UDDI Green Pages → contratos (OpenAPI JSON / WSDL) + operaciones disponibles\n  - Discoverability: principio SOA #8 de Thomas Erl\n  - ESB (RabbitMQ como broker de mensajes): comunicación asíncrona vs síncrona (RestTemplate)",
+      "item": [
+        {
+          "name": "GET — Inventario completo del ecosistema SOA",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/registro",
+            "description": "CONCEPTO UDDI / Service Inventory:\nRetorna los 5 servicios registrados con su tipo, estado en tiempo real, contrato y operaciones.\n\nObserva:\n  - tipo: ENTITY (libros, usuarios), TASK (préstamos), SOAP, UTILITY (xml)\n  - estado: DISPONIBLE / NO_DISPONIBLE — verificado en tiempo real contra el health endpoint\n  - contrato: URL al OpenAPI JSON o WSDL — Green Pages del UDDI\n\nEn producción esto lo hace Consul, Eureka (Spring Cloud) o Azure API Management."
+          }
+        },
+        {
+          "name": "GET — Dashboard de salud del ecosistema",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/registro/salud",
+            "description": "Verifica el estado de todos los servicios en tiempo real.\n\nRespuesta:\n  - ecosistema: SALUDABLE (todos activos) o DEGRADADO (alguno caído)\n  - servicios_activos: X/5\n  - detalle: estado individual de cada servicio\n\nUso práctico: detén un servicio (docker stop soa-libros) y vuelve a llamar este endpoint para ver cómo el ecosistema detecta el fallo."
+          }
+        },
+        {
+          "name": "GET — Health del propio registro",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/registro/health",
+            "description": "Estado del Service Registry en sí mismo. Usado por Docker healthcheck y el dashboard de monitoreo."
+          }
+        },
+        {
+          "name": "GET — Swagger UI del registro (abrir en navegador)",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/swagger-ui.html",
+            "description": "Contrato OpenAPI del Service Registry. Abre esta URL en el navegador para ver la documentación interactiva.\n\nNota: el registro también tiene su propio contrato — practica lo que predica (Discoverability)."
+          }
+        },
+        {
+          "name": "GET — RabbitMQ Management UI (abrir en navegador)",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:15672",
+            "description": "CONCEPTO ESB — Message Broker (componente del ESB):\nUI de administración de RabbitMQ. Credenciales: guest / guest\n\nExplora:\n  - Exchanges: puntos de entrada de mensajes (enrutamiento)\n  - Queues: colas donde esperan los mensajes (desacoplamiento temporal)\n  - Connections: consumidores activos\n\nDiferencia clave:\n  RabbitMQ = Message Broker → solo transporta mensajes\n  ESB real (WSO2, MuleSoft) = Broker + transformación + mediación + orquestación + protocolo bridging\n\nAbre esta URL directamente en el navegador — no en Postman."
+          }
+        },
+        {
+          "name": "GET — Simular servicio caído (apagar libros y verificar)",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/registro/salud",
+            "description": "EJERCICIO PRÁCTICO:\n1. Detén el servicio de libros: docker stop soa-libros\n2. Ejecuta ESTE request\n3. Observa que el ecosistema pasa a DEGRADADO y servicio-libros = NO_DISPONIBLE\n4. Reinicia: docker start soa-libros\n5. Vuelve a ejecutar → regresa a SALUDABLE\n\nEsto demuestra: detección de fallos en tiempo real, un principio clave del monitoreo en SOA."
+          }
+        },
+        {
+          "name": "GET — Inventario: comparar tipos de servicio",
+          "request": {
+            "method": "GET",
+            "url": "{{registro_url}}/registro",
+            "description": "EJERCICIO TEÓRICO — usa la respuesta para responder:\n\n1. ¿Cuáles son los Entity Services? (tipo: ENTITY) → gestionan datos maestros\n2. ¿Cuál es el Task Service? (tipo: TASK) → orquesta otros servicios\n3. ¿Qué diferencia al SOAP Service de los REST? → contrato = WSDL vs OpenAPI JSON\n4. ¿Qué hace el UTILITY Service? → laboratorio XML educativo\n\nConcepto: la clasificación de servicios (tipos) es el Yellow Pages del UDDI."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. PostgreSQL + WSO2 MI (Sesiones 17-18)",
+      "description": "Persistencia real con PostgreSQL + Orquestación con WSO2 Micro Integrator.\n\nOrden de uso en clase:\n  A. Verificación pre-clase (ejecutar ANTES de entrar al aula)\n  B. Demo Bloque 1 — datos persistentes vs efímeros\n  C. Apartados PostgreSQL — interacción directa con BD\n  D. WSO2 MI — proxy y mediación\n  E. WSO2 MI — orquestación y transformación\n  F. Manejo de fallos — faultSequence en acción",
+      "item": [
+        {
+          "name": "A. Verificación Pre-Clase",
+          "item": [
+            {
+              "name": "Health — servicio-libros (con PostgreSQL)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros/health",
+                "description": "VERIFICAR ANTES DE CLASE:\n✅ Espera: {\"status\": \"UP\"}\n❌ Si falla: docker logs soa-libros\n\nSi el log dice 'relation libro does not exist': PostgreSQL no se conectó. Verificar que soa-postgres está corriendo."
+              }
+            },
+            {
+              "name": "Health — WSO2 MI Management API",
+              "request": {
+                "method": "GET",
+                "url": "http://localhost:9164/management/health",
+                "description": "VERIFICAR ANTES DE CLASE:\n✅ Espera: {\"status\": \"running\"}\n❌ Si da SSL error en Postman: normal — el endpoint es HTTPS. Verificar desde terminal:\n   curl -sk https://localhost:9164/management/health\n\nSi WSO2 MI no levanta: docker logs soa-wso2-mi (arranca en ~60s)"
+              }
+            },
+            {
+              "name": "Verificar datos iniciales en PostgreSQL",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "VERIFICAR ANTES DE CLASE:\n✅ Espera: array con 5 libros (lib-001 a lib-005 cargados desde data.sql)\n❌ Si array vacío: data.sql no se ejecutó. Revisar:\n   docker logs soa-libros | grep -i 'data.sql'\n\n⚠️  IMPORTANTE: Nunca usar 'docker compose down -v' antes de clase — borra el volumen y los datos."
+              }
+            },
+            {
+              "name": "Probar proxy WSO2 MI → libros",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/libros",
+                "description": "VERIFICAR ANTES DE CLASE:\n✅ Espera: array de libros + headers:\n   X-Orquestado-Por: WSO2-Micro-Integrator\n   X-Sesion-SOA: Sesion-17-18\n❌ Si 404: LibrosProxyAPI.xml no cargó. Verificar:\n   docker exec soa-wso2-mi ls /home/wso2carbon/wso2mi-4.3.0/repository/deployment/server/synapse-configs/default/api/"
+              }
+            },
+            {
+              "name": "Probar orquestación WSO2 MI → catálogo enriquecido",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/catalogo-enriquecido",
+                "description": "VERIFICAR ANTES DE CLASE:\n✅ Espera: JSON con estructura:\n   { \"fuente\": \"WSO2-Micro-Integrator\", \"operacion\": \"catalogo-enriquecido\", \"libros\": [...] }\n❌ Si falla: docker logs soa-wso2-mi | grep ERROR"
+              }
+            }
+          ]
+        },
+        {
+          "name": "B. Demo Bloque 1 — Persistencia",
+          "item": [
+            {
+              "name": "1. Crear libro de prueba (antes del reinicio)",
+              "request": {
+                "method": "POST",
+                "url": "{{libros_url}}/libros",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"titulo\": \"Libro de Prueba Efímero\",\n  \"autor\": \"Estudiante SOA\",\n  \"isbn\": \"000-0000000000\",\n  \"disponible\": true\n}"
+                },
+                "description": "DEMO PERSISTENCIA — Paso 1:\nCrea un libro de prueba. Anota el ID (UUID) que devuelve el servidor.\n\nPregunta a la clase: ¿Dónde creen que se guarda este libro?\nRespuesta esperada: debatir memoria vs base de datos.\n\nDespués: docker compose down → docker compose up -d → ejecutar paso 3."
+              }
+            },
+            {
+              "name": "2. Confirmar que el libro existe",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "DEMO PERSISTENCIA — Paso 2:\nConfirmar que el libro de prueba aparece en el catálogo.\n\nSiguiente acción en terminal:\n  docker compose down\n  docker compose up -d\n  (esperar ~45s)\n  docker compose ps   ← verificar que soa-libros está healthy"
+              }
+            },
+            {
+              "name": "3. Listar libros DESPUÉS del reinicio (datos persisten)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "DEMO PERSISTENCIA — Paso 3:\nEl libro del paso 1 sigue aquí después del reinicio completo.\n\n✅ Concepto demostrado: Database per Service + Docker named volume\n\nPregunta a la clase: ¿Por qué el libro sobrevivió?\nRespuesta: los datos están en PostgreSQL (volumen postgres-data), no en la memoria del proceso Java.\n\nDiferencia con sesiones anteriores: antes usaban HashMap — al matar el contenedor, todo se perdía."
+              }
+            }
+          ]
+        },
+        {
+          "name": "C. Apartados PostgreSQL",
+          "item": [
+            {
+              "name": "GET — Listar libros (findAll → SELECT *)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "APARTADO 3 — LibroRepository.java + LibroService.java:\nSpring Data JPA genera automáticamente:\n  SELECT * FROM libro;\n\nFlujo completo:\n  LibroController.listar()\n  → LibroService.listarTodos()\n  → repositorio.findAll()   ← JpaRepository\n  → PostgreSQL\n\nPregunta a la clase: ¿Qué hay en LibroRepository.java?\nRespuesta: solo la interfaz — sin código. Spring genera la implementación en runtime."
+              }
+            },
+            {
+              "name": "GET — Buscar por ID (findById → SELECT WHERE id)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros/lib-001",
+                "description": "APARTADO 3 — LibroService.java:\nSQL generado:\n  SELECT * FROM libro WHERE id = 'lib-001';\n\nRetorna Optional<Libro> — si no existe → 404 Not Found.\n\nPregunta a la clase: ¿Qué pasa si enviamos un ID inexistente?\nRespuesta: Optional.empty() → el controller devuelve 404."
+              }
+            },
+            {
+              "name": "POST — Crear libro (UUID + INSERT)",
+              "request": {
+                "method": "POST",
+                "url": "{{libros_url}}/libros",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"titulo\": \"Microservices Patterns\",\n  \"autor\": \"Chris Richardson\",\n  \"isbn\": \"978-1617294549\",\n  \"disponible\": true\n}"
+                },
+                "description": "APARTADO 4 — LibroService.java línea crear:\nSQL generado:\n  INSERT INTO libro (id, titulo, autor, isbn, disponible) VALUES (?, ?, ?, ?, ?);\n\nEl cliente NO envía el ID — el servidor lo genera con UUID.randomUUID().\n\nPregunta a la clase: ¿Por qué UUID en lugar de 1, 2, 3?\nRespuesta: con reinicio el contador resetea → colisión de IDs. UUID es único globalmente.\n\nTras crear: abrir psql en terminal y hacer SELECT * FROM libro para verlo en BD."
+              }
+            },
+            {
+              "name": "PATCH — Cambiar disponibilidad (UPDATE SQL)",
+              "request": {
+                "method": "PATCH",
+                "url": {
+                  "raw": "{{libros_url}}/libros/lib-001/disponibilidad?disponible=false",
+                  "query": [{ "key": "disponible", "value": "false" }]
+                },
+                "description": "APARTADO 4 — LibroService.java línea cambiarDisponibilidad:\nSQL generado:\n  UPDATE libro SET disponible = false WHERE id = 'lib-001';\n\nDespués de ejecutar: ir a terminal y verificar en psql:\n  docker exec -it soa-postgres psql -U admin -d biblioteca\n  SELECT id, titulo, disponible FROM libro WHERE id = 'lib-001';\n\nDemuestra que el cambio persiste en la BD real."
+              }
+            }
+          ]
+        },
+        {
+          "name": "D. WSO2 MI — Proxy y Mediación",
+          "item": [
+            {
+              "name": "GET — Libros VÍA WSO2 MI (proxy)",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/libros",
+                "description": "APARTADO 5 — LibrosProxyAPI.xml:\nFlujo: Cliente → WSO2 MI (8290) → soa-libros:8001/libros\n\nObservar en la pestaña Headers de Postman:\n  X-Orquestado-Por: WSO2-Micro-Integrator\n  X-Sesion-SOA: Sesion-17-18\n  X-Backend-Service: soa-libros:8001\n\nEstos headers los inyecta el ESB — el servicio de libros no los envía.\n\nPregunta a la clase: ¿soa-libros sabe que WSO2 MI lo está usando?\nRespuesta: NO — loose coupling. El backend no sabe quién lo consume."
+              }
+            },
+            {
+              "name": "GET — Libro por ID VÍA WSO2 MI",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/libros/lib-001",
+                "description": "APARTADO 5 — LibrosProxyAPI.xml (recurso /{id}):\nProxy para el endpoint individual. Mismo principio de mediación.\n\nUso en clase: ejecutar en tabs paralelos con el request directo:\n  Tab 1: GET {{libros_url}}/libros/lib-001  (sin headers ESB)\n  Tab 2: GET {{wso2_url}}/mi/libros/lib-001 (con headers ESB)\n\nContenido idéntico — diferencia visible solo en headers de respuesta."
+              }
+            },
+            {
+              "name": "GET — Libros DIRECTO (comparar con proxy)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "COMPARACIÓN DIRECTA:\nEjecutar junto a 'GET Libros VÍA WSO2 MI' para mostrar diferencia.\n\nDirecto: Cliente → soa-libros:8001  (sin headers ESB, sin trazabilidad)\nProxy:   Cliente → WSO2 MI → soa-libros  (con headers, gobernable)\n\nConcepto: Service Abstraction — el ESB oculta la ubicación real del servicio.\nEl cliente nunca necesita saber que el backend está en el puerto 8001."
+              }
+            }
+          ]
+        },
+        {
+          "name": "E. WSO2 MI — Orquestación y Transformación",
+          "item": [
+            {
+              "name": "GET — Catálogo Enriquecido (orquestación completa)",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/catalogo-enriquecido",
+                "description": "APARTADO 6 — CatalogoEnriquecidoAPI.xml:\nFlujo de orquestación:\n  1. <log>     — registra inicio del flujo\n  2. <call>    — llama a soa-libros:8001/libros\n  3. <property> — guarda la respuesta en 'datos_libros'\n  4. <payloadFactory> — transforma: envuelve datos con metadatos ESB\n  5. <header>  — agrega X-Orquestado-Por\n  6. <respond> — devuelve respuesta transformada al cliente\n\nRespuesta esperada:\n{\n  \"fuente\": \"WSO2-Micro-Integrator\",\n  \"operacion\": \"catalogo-enriquecido\",\n  \"version_api\": \"v1\",\n  \"libros\": [ ... ]\n}\n\nPregunta a la clase: ¿Quién hace la transformación — el servicio de libros o el ESB?\nRespuesta: el ESB (payloadFactory en el XML). soa-libros devuelve JSON plano, igual que siempre."
+              }
+            },
+            {
+              "name": "GET — Libros DIRECTO (comparar estructura)",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "COMPARACIÓN DE TRANSFORMACIÓN — abrir en tabs paralelos:\n\nTab 1 (directo):    GET {{libros_url}}/libros\n  → Response: [ {id, titulo, autor, isbn, disponible}, ... ]  ← array plano\n\nTab 2 (orquestado): GET {{wso2_url}}/mi/catalogo-enriquecido\n  → Response: { fuente, operacion, version_api, libros: [...] }  ← objeto enriquecido\n\nConcepto clave: TRANSFORMACIÓN DE MENSAJES\nEl cliente que consume /mi/catalogo-enriquecido recibe un contrato diferente\nal que expone soa-libros — sin que ninguno de los dos cambie su código."
+              }
+            }
+          ]
+        },
+        {
+          "name": "F. Manejo de Fallos (faultSequence)",
+          "item": [
+            {
+              "name": "Simular fallo — proxy con backend caído",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/libros",
+                "description": "DEMO FAULT HANDLING — Pasos:\n1. Terminal: docker stop soa-libros\n2. Ejecutar ESTE request\n3. Observar respuesta 503 estructurada:\n   {\"error\": \"Servicio de libros no disponible\",\n    \"orquestador\": \"WSO2-Micro-Integrator\",\n    \"causa\": \"Backend soa-libros:8001 no responde\"}\n4. Terminal: docker start soa-libros\n5. Ejecutar de nuevo → respuesta normal\n\nConcepto: <faultSequence> en LibrosProxyAPI.xml atrapa el error de conexión\ny devuelve una respuesta HTTP 503 controlada con JSON.\nEl cliente nunca recibe un 'Connection Refused' crudo."
+              }
+            },
+            {
+              "name": "Simular fallo — orquestación con backend caído",
+              "request": {
+                "method": "GET",
+                "url": "{{wso2_url}}/mi/catalogo-enriquecido",
+                "description": "DEMO FAULT HANDLING (orquestación):\n1. Terminal: docker stop soa-libros (si no está detenido)\n2. Ejecutar ESTE request\n3. Observar 503 del ESB:\n   {\"error\": \"Fallo en la orquestación del catálogo\",\n    \"orquestador\": \"WSO2-Micro-Integrator\",\n    \"causa\": \"servicio-libros no disponible\"}\n4. Terminal: docker start soa-libros\n\nPregunta a la clase: ¿Qué sección del XML CatalogoEnriquecidoAPI.xml maneja el error?\nRespuesta: <faultSequence> — la rama de error del flujo."
+              }
+            },
+            {
+              "name": "Comparar — acceso directo al servicio caído",
+              "request": {
+                "method": "GET",
+                "url": "{{libros_url}}/libros",
+                "description": "COMPARACIÓN DE ERROR — con soa-libros detenido:\n\nAcceso directo → Postman muestra 'Could not get any response' / Connection refused\nAcceso via WSO2 MI → HTTP 503 con JSON estructurado\n\nConcepto: el ESB actúa como normalizador de errores.\nEl cliente siempre recibe una respuesta HTTP válida, nunca un error de red crudo.\n\nEste patrón se llama: Circuit Breaker / Fault Isolation en arquitectura SOA."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
